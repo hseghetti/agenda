@@ -1,0 +1,752 @@
+#include "generate.h"
+
+
+static FILE *output;
+extern int maxDepth;
+extern int depth;
+int label = 0;
+
+
+void generateAssemblyCode ( Node *tree, char *outputFilename )
+{
+  char reg [ 3 ];
+
+  output = fopen ( outputFilename, "w" );  
+
+  generateAssemblyStack();
+  generateAssemblyDisplay();
+  fprintf ( output, "code\tSEGMENT word public 'code'\n" ); 
+  fprintf ( output, "\tASSUME\tCS:code,DS:data,SS:activations\n\n" );
+  fprintf ( output, "START:\tMOV\tAX,activations\n" );
+  fprintf ( output, "\tMOV\tSS,AX\n" );
+  fprintf ( output, "\tMOV\tAX,access\n" );
+  fprintf ( output, "\tMOV\tDS,AX\n" );
+  fprintf ( output, "\tLEA\tSP,TOP\n" );
+  fprintf ( output, "\tCALL\tmain\n\n" );
+
+  /* Copia de zonas de memoria. */
+  findRegister( NULL, AL, reg );
+  fprintf ( output, "\nMOVE\tPROC\tNEAR\n" );
+  fprintf ( output, "MOVING:\n\tMOV\tAL,[SI]\n" );
+  fprintf ( output, "\tMOV\t[DI],AL\n" );
+  fprintf ( output, "\tINC\tSI\n" );
+  fprintf ( output, "\tINC\tDI\n" );
+  fprintf ( output, "\tLOOP\tMOVING\n" );
+  fprintf ( output, "\tENDP\tMOVE\n\n" );
+
+  generateAssembly( tree );
+  fprintf ( output, "code\tENDS\n\n" );
+  fprintf ( output, "\textrn\t_writeInteger:near\n" );
+  fprintf ( output, "\textrn\t_writeBoolean:near\n" );
+  fprintf ( output, "\textrn\t_writeChar:near\n" );
+  fprintf ( output, "\textrn\t_writeString:near\n" );
+  fprintf ( output, "\textrn\t_writeNewline:near\n" );
+  fprintf ( output, "\textrn\t_readChar:near\n" );
+  fprintf ( output, "\textrn\t_readBoolean:near\n" );
+  fprintf ( output, "\textrn\t_readInteger:near\n" );
+  fprintf ( output, "\tEND\tSTART\n\n" );
+  close ( output );
+}
+
+
+void generateAssemblyStack ( void )
+{
+  fprintf ( output, "activations\tSEGMENT STACK 'STACK'\n" );
+  fprintf ( output, "\tDB\t1024\tDUP(?)\n" );
+  fprintf ( output, "TOP\tLABEL\tWORD\n" );
+  fprintf ( output, "activations\tENDS\n\n" );
+}
+
+
+void generateAssemblyDisplay ( void )
+{
+  fprintf ( output, "data\tSEGMENT word public 'data'\n" ); 
+  fprintf ( output, "access\tDW\t%i\tDUP(?)\n", maxDepth + 1 );
+  fprintf ( output, "data\tENDS\n\n" );
+}
+
+
+void generateAssembly( Node *node )
+{
+  switch ( node->name )
+  {
+    case PROCNODE:
+    case FUNCNODE:
+      generateAssemblyForProcnodeFuncnode( node );
+      break;
+    case WRITENODE:
+    case COMPOUND:
+      {  
+	int counter;
+
+	for ( counter = 0; counter < node->nNodes; counter++ )
+	  generateAssembly( node->point.nodes[ counter ] );
+      }
+      break;
+    case PROCCALL:
+      generateAssemblyForProccallFunccall( node );
+      break;
+    case ASSIGNMENT :
+      generateAssemblyForAssignment ( node );
+      break;
+    case IFNODE :
+      generateAssemblyForIf ( node );
+      break;
+    case WHILENODE :
+      generateAssemblyForWhile ( node );
+      break;
+    case PRINTNODE :
+      generateAssemblyForPrint ( node );
+      break;
+    case EMPTY:
+      break;
+  }
+}
+
+void generateAssemblyForPrint ( Node *node )
+{
+  char *reg;
+
+  switch ( node -> point.nodes [ 0 ] -> name )
+  {
+    case VARNAME : reg = generateAssemblyForVariable ( node -> point.nodes [ 0 ] -> point.nameVar );
+		   if ( node -> nNodes > 1 )
+		     fprintf ( output, "\tPUSH\t%i\n", node -> point.nodes [ 1 ] -> nNodes );
+		   else
+		     fprintf ( output, "\tPUSH\t0\n" );
+		   switch ( getSymbolType ( node -> point.nodes [ 0 ] -> point.nameVar ))
+		   {
+		     case INTEGER : fprintf ( output, "\tPUSH\t%s\n", reg );
+				    fprintf ( output, "\tCALL\t_writeInteger\n" );
+				    break;
+		   }
+		   fprintf ( output, "\tPOP\t%s\n", reg );
+		   fprintf ( output, "\tPOP\t%s\n", reg );
+		   cleanRegister ( reg );
+		   break;
+  }
+}
+
+int getLocalDataSizeAndCalcOffsets( int procNo )
+{
+  int paramOffset = 6; /* IP + control link + access link */
+  int localOffset = 2;
+  SymbolInfo *aux;
+
+  for ( aux = procTable[ procNo ]; aux != NULL; aux = getSymbolNext( aux ))
+  {
+    int typeSize = getTypeSize( aux );
+
+    if ( getSymbolParam( aux ))
+    {
+      paramOffset = updateOffset( paramOffset, INTEGERSIZE ); /* Forcar o alinhamento por words. */
+      setSymbolOffs( aux, paramOffset );
+      if ( getSymbolByref( aux ))
+	paramOffset += ADDRESSSIZE;
+      else
+        paramOffset += typeSize;
+    }
+    else
+    {
+      localOffset = updateOffset( localOffset, typeSize );
+      setSymbolOffs( aux, -localOffset );
+      localOffset += typeSize;
+    }
+  }
+  return ( localOffset - 2 );
+}
+
+
+void generateAssemblyForProcnodeFuncnode ( Node *node )
+{  
+  char *reg = (char *) malloc( sizeof( char ) * 3 );
+  int nNodes, counter;
+  
+  depth = getSymbolDepth ( node->point.nodes[0]->point.nameVar );
+  fprintf ( output, "%s\tPROC\tNEAR\n", getSymbolName ( node->point.nodes[0]->point.nameVar )); 
+  fprintf ( output, "\tPUSH\tBP\n" );
+  findRegister( NULL, ANYTHING, reg );
+  fprintf ( output, "\tMOV\t%s,access[%i]\n\tPUSH\t%s\n", reg, depth * 2, reg );
+  fprintf ( output, "\tMOV\tBP,SP\n" );
+  fprintf ( output, "\tMOV\taccess[%i],BP\n", depth *2 );
+  fprintf ( output, "\tSUB\tSP,%i\n", getLocalDataSizeAndCalcOffsets( getSymbolProc( node->point.nodes[0]->point.nameVar )));
+  generateAssembly( node->point.nodes[1]->point.nodes[1] );      
+  fprintf ( output, "\tPOP\tAX\n" );
+  findRegister ( NULL, AX, reg );
+  fprintf ( output, "\tMOV\tSP,BP\n" );
+  findRegister( NULL, ANYTHING, reg );
+  fprintf ( output, "\tPOP\t%s\n\tMOV\taccess[%i],%s\n", reg, depth * 2, reg );
+  fprintf ( output, "\tPOP\tBP\n" );
+  if ( !strcmp( "main", getSymbolName ( node->point.nodes[0]->point.nameVar )))
+  {
+    fprintf ( output, "\tMOV\tAH,4Ch\n" );
+    fprintf ( output, "\tINT\t21h\n" );
+  }
+  fprintf ( output, "\tRET\n" );
+  fprintf ( output, "\tENDP\t%s\n\n", getSymbolName ( node->point.nodes[0]->point.nameVar )); 
+  if ( nNodes = node->point.nodes[1]->point.nodes[0]->nNodes )
+    for ( counter = 0; counter < nNodes; counter++ )
+      generateAssembly( node->point.nodes[1]->point.nodes[0]->point.nodes[ counter ] );
+}
+
+
+void generateAssemblyForProccallFunccall ( Node *node )
+{
+  SymbolInfo     *info1 = node->point.nodes[0]->point.nameVar; /* O subprograma a chamar. */
+  SubprogramInfo *info2 = ( SubprogramInfo * ) getSymbolMore( info1 );
+  ParameterInfo  *info3 = getSubprogramArgs( info2 );
+  int narg = getSubprogramNarg( info2 );
+  int counter = 0;
+  int argSize = 0;
+
+  for ( ; counter < narg; counter++ )
+  {
+    char *reg;
+
+    if ( getParameterByref( &info3[counter] ))
+    {
+      SymbolInfo *info = node->point.nodes[counter + 1]->point.nameVar;
+
+      if ( getSymbolParam( info ) & getSymbolByref( info ))
+      {
+	findRegister( NULL, ANYTHING, reg = (char *) malloc( sizeof( char ) * 3 ));
+	fprintf( output, "\tMOV\t%s,WORD PTR [BP + %i]\n", reg, getSymbolOffs( info ));
+	fprintf( output, "\tPUSH\t%s\n", reg );
+      }
+      else
+      {
+	int auxDepth = getSymbolDepth( info );
+
+	findRegister( NULL, ANYTHING, reg = (char *) malloc( sizeof( char ) * 3 ));
+	if ( auxDepth == depth ) 
+	  fprintf( output, "\tLEA\t%s,WORD PTR [BP + %i]\n", reg, getSymbolOffs( info ));
+        else {
+	  fprintf( output, "\tMOV\tDI,access[%i]\n", auxDepth * 2 ); 
+	  fprintf( output, "\tLEA\t%s,SS:[DI + %i]\n", reg, getSymbolOffs( info ));
+	}
+	fprintf( output, "\tPUSH\t%s\n", reg );
+      }
+      argSize += 2;
+    }
+    else {
+      int size = getTypeSize ( getParameterParam( &info3[counter] ));
+
+      switch ( size ) 
+      {
+	case INTEGERSIZE:
+	case BOOLEANSIZE: /* Tambem serve para caracteres. */
+	  {
+	     char *aux = ( char * ) malloc ( 3 ),
+		  *tmp, *reg = generateAssemblyForExpression( node->point.nodes[counter + 1], NOFLAG );
+
+	     aux [ 0 ] = reg[ 0 ];
+	     aux [ 1 ] = (( reg[ 1 ] == 'H' ) ? 'L' : 'H' );
+	     aux [ 2 ] = '\0';
+	     if ( reg[ 1 ] == 'H' )
+	     {
+	       fprintf ( output, "\tMOV\t%s, %s\n", reg, aux );
+	       tmp = aux;
+	       strcpy ( aux, reg );
+	       reg = tmp;
+             }
+	     fprintf ( output, "\tXOR\t%s, %s\n", aux, aux );
+             aux [ 1 ] = 'X';
+	     findRegister ( NULL, giveRegisterCode ( aux ), aux );
+             reg = aux;
+             fprintf( output, "\tPUSH\t%s\n", reg );
+	  }
+	  break;
+        default:
+	  cleanRegisters ();
+	  findRegister( NULL, BX, reg = ( char * ) malloc( sizeof( char ) * 3 ));
+	  fprintf ( output, "\tMOV\tBX,DS\n" );
+	  fprintf ( output, "\tMOV\tDS,SS\n" );
+	  fprintf ( output, "\tMOV\tES,SS\n" );
+	  fprintf ( output, "\tMOV\tSI,%s\n", generateAssemblyForExpression( node->point.nodes[counter + 1], NOFLAG ));
+	  fprintf ( output, "\tMOV\tDI,SP\n" );
+	  fprintf ( output, "\tSUB\tSP,%i\n", size );
+	  findRegister( NULL, CX, reg );
+	  fprintf ( output, "\tMOV\tCX,%i\n", size );
+	  fprintf ( output, "\tCALL\tMOVE\n" );
+	  fprintf ( output, "\tMOV\tDS,BX\n" );
+	  cleanRegisters ();
+	  free( reg );
+	  break;
+      } 
+      argSize += size; 
+    }	  
+  }
+  fprintf ( output, "\tCALL\t%s\n", getSymbolName( info1 ));
+  fprintf ( output, "\tADD\tSP,%i\n", argSize );
+}
+
+
+void generateRecordCopy( SymbolInfo *info, char *address )
+{
+  char *reg;
+  int size = getTypeSize( info );
+
+  cleanRegisters ();
+  findRegister( NULL, BX, reg = ( char * ) malloc( sizeof( char ) * 3 ));
+  fprintf ( output, "\tMOV\tBX,DS\n" );
+  fprintf ( output, "\tMOV\tDS,SS\n" );
+  fprintf ( output, "\tMOV\tES,SS\n" );
+  fprintf ( output, "\tMOV\tSI,[%s]\n", address );
+  fprintf ( output, "\tMOV\tDI,access[%i]\n", getSymbolDepth( info ) * 2 );
+  fprintf ( output, "\tMOV\tDI,SS:[DI+%i]\n", getSymbolOffs( info ));
+  findRegister( NULL, CX, reg );
+  fprintf ( output, "\tMOV\tCX,%i\n", size );
+  fprintf ( output, "\tCALL\tMOVE\n" );
+  fprintf ( output, "\tMOV\tDS,BX\n" );
+  cleanRegisters ();
+  free( reg );
+}
+
+
+void generateAssemblyForIf ( Node *node )
+{
+  char *reg;
+  int label1 = ++label; 
+  int auxlabel = label1;
+
+  reg = generateAssemblyForExpression ( node -> point.nodes [ 0 ], IFFLAG );
+  generateAssembly ( node -> point.nodes [ 1 ] -> point.nodes [ 0 ]);
+  if ( node -> nNodes == 3 ) 
+  {
+    int label2 = ++label; 
+
+    fprintf ( output, "\tJMP\t_%i\n", label2 ); 
+    fprintf ( output, "_%i :\n", label1 ); 
+    generateAssembly ( node -> point.nodes [ 2 ] -> point.nodes [ 0 ] );
+    auxlabel = label2;
+  }
+  fprintf ( output, "_%i :\n", auxlabel );
+}
+
+void generateAssemblyForWhile ( Node *node )
+{
+  char *reg;
+  int label1 = ++label, 
+      label2 = ++label;
+
+  fprintf ( output, "\tJMP\t_%i\n", label2 );
+  fprintf ( output, "_%i :\n", label1 ); 
+  generateAssembly ( node -> point.nodes [ 1 ] );
+  fprintf ( output, "_%i :\n", label2 );
+  reg = generateAssemblyForExpression ( node -> point.nodes [ 0 ], WHILEFLAG );
+}
+
+void generateAssemblyForAssignment ( Node *node )
+{
+  char *regExpression, regVariable [ 3 ];
+
+  regExpression = generateAssemblyForExpression ( node -> point.nodes [ 1 ], NOFLAG );
+  if ( node -> point.nodes [ 0 ] -> name == VARNAME )
+  {
+    if ( getSymbolType ( node -> point.nodes [ 0 ] -> point.nameVar ) == RECORD )
+      generateRecordCopy ( node -> point.nodes [ 0 ] -> point.nameVar, regExpression ); 
+    else
+    {
+      int depthSym = getSymbolDepth ( node -> point.nodes [ 0 ] -> point.nameVar ),
+	  off = getSymbolOffs ( node -> point.nodes [ 0 ] -> point.nameVar );
+
+      if ( depth == depthSym )
+      {
+        if ( off >= 0 )
+          fprintf ( output, "\tMOV\t[BP+%i], %s\n", off, regExpression );
+        else
+          fprintf ( output, "\tMOV\t[BP%i], %s\n", off, regExpression );
+      }
+      else
+      {
+        fprintf ( output, "\tMOV\tDI, access[%i]\n", depthSym * 2 );
+        if ( off >= 0 )
+          fprintf ( output, "\tMOV\tSS:[DI+%i], %s\n", off, regExpression );
+        else
+          fprintf ( output, "\tMOV\tSS:[DI%i], %s\n", off, regExpression );
+      }
+      if ( regExpression = inRegister ( node -> point.nodes [ 0 ] -> point.nameVar ))
+        cleanRegister ( regExpression );
+    }
+  }
+  else
+    if ( node -> point.nodes [ 0 ] -> name == RETURNVALUE )
+    {
+      fprintf ( output, "\tPUSH\t%s\n", regExpression );
+      cleanRegister ( regExpression );
+    }
+}
+
+
+char *generateAssemblyForVariable ( SymbolInfo *variable )
+{
+  int depthSym = getSymbolDepth ( variable ),
+      off = getSymbolOffs ( variable ),
+      aux;
+  char *regResult = ( char * ) malloc ( 3 );
+
+  if ( getSymbolType ( variable ) == RECORD )
+    aux = findRegister ( NULL, ANYTHING, regResult );
+  else
+    aux = findRegister ( variable, ANYTHING, regResult );
+  if ( aux ) 
+  {
+    if ( getSymbolType ( variable ) == RECORD )
+    {
+      if ( depth == depthSym )
+      {
+        if ( off >= 0 )
+          fprintf ( output, "\tMOV\t%s, BP+%i\n", regResult, off );
+        else
+          fprintf ( output, "\tMOV\t%s, BP%i\n", regResult, off );
+      }
+      else
+      {
+        fprintf ( output, "\tMOV\tDI, access[%i]\n", depthSym * 2 );
+        if ( off >= 0 )
+          fprintf ( output, "\tMOV\t%s, DI+%i\n", regResult, off );
+        else
+          fprintf ( output, "\tMOV\t%s, DI%i\n", regResult, off );
+      }
+    }
+    else
+      if ( depth == depthSym )
+      {
+        if ( off >= 0 )
+          fprintf ( output, "\tMOV\t%s, [BP+%i]\n", regResult, off );
+        else
+          fprintf ( output, "\tMOV\t%s, [BP%i]\n", regResult, off );
+      }
+      else
+      {
+        fprintf ( output, "\tMOV\tDI, access[%i]\n", depthSym * 2 );
+        if ( off >= 0 )
+          fprintf ( output, "\tMOV\t%s, SS:[DI+%i]\n", regResult, off );
+        else
+          fprintf ( output, "\tMOV\t%s, SS:[DI%i]\n", regResult, off );
+      }
+  }
+  return regResult;
+}
+
+char *generateAssemblyForVarByref ( SymbolInfo * variable )
+{
+  int depthSym = getSymbolDepth ( variable ),
+      off = getSymbolOffs ( variable ),
+      aux;
+  char *regResult = ( char * ) malloc ( 3 );
+
+  if ( getSymbolType ( variable ) == RECORD )
+    aux = findRegister ( NULL, ANYTHING, regResult );
+  else
+    aux = findRegister ( variable, ANYTHING, regResult );
+  if ( aux ) 
+  {
+    if ( depth == depthSym )
+    {
+      if ( off >= 0 )
+        fprintf ( output, "\tMOV\tDI, [BP+%i]\n", off );
+      else
+        fprintf ( output, "\tMOV\tDI, [BP%i]\n", off );
+    }
+    else
+    {
+      fprintf ( output, "\tMOV\tDI, access[%i]\n", depthSym * 2 );
+      if ( off >= 0 )
+        fprintf ( output, "\tMOV\tDI, SS:[DI+%i]\n", off );
+      else
+        fprintf ( output, "\tMOV\tDI, SS:[DI%i]\n", off );
+    }
+    if ( getSymbolType ( variable ) == RECORD )
+      fprintf ( output, "\tMOV\t%s, DI\n", regResult );
+    else
+      fprintf ( output, "\tMOV\t%s, SS:[DI]\n", regResult );
+  }
+  return regResult;
+}
+
+char *generateAssemblyForExpression ( Node *node, int flag )
+{
+  char *regResult = ( char * ) malloc ( 3 );
+
+  generateAssemblyForSubexpression ( node, flag );
+  findRegister ( NULL, ANYTHING, regResult );
+  fprintf ( output, "\tPOP\t%s\n", regResult );
+  return regResult;
+}
+
+
+void generateAssemblyForSubexpression ( Node *node, int flag )
+{
+  char *regResult;
+  int  depth, auxFlag = 0;
+
+  switch ( node -> name )
+  {
+    case VARNAME : if ( getSymbolParam ( node -> point.nameVar ) && getSymbolByref ( node -> point.nameVar ))
+		     regResult = generateAssemblyForVarByref ( node -> point.nameVar );
+		   else
+		     regResult = generateAssemblyForVariable ( node -> point.nameVar );
+		   break;
+    case FIELDS  : { 
+		     SymbolInfo *aux = node -> point.nameVar;
+
+		     while ( aux -> next != NULL )
+	               aux = aux -> next;	       
+		     if ( getSymbolParam ( aux ) && getSymbolByref ( aux ))
+		       regResult = generateAssemblyForVarByref ( aux );
+		     else
+		       regResult = generateAssemblyForVariable ( aux );
+		     break;
+		   }
+    case FUNCCALL : generateAssemblyForProccallFunccall ( node );
+		    regResult = ( char * ) malloc ( 3 );
+		    strcpy ( regResult, "AX" );
+		    break;
+    case INTEGERNODE : regResult = ( char * ) malloc ( 7 );
+		       sprintf ( regResult, "%i", node -> nNodes );
+		       break;
+    case CHARNODE : regResult = ( char * ) malloc ( 3 );
+		    sprintf ( regResult, "%i", node -> nNodes );
+		    break;
+    case BOOLNODE : regResult = ( char * ) malloc ( 3 );
+		    if ( node -> nNodes == TRUE )
+		      sprintf ( regResult, "255" );
+                    else 
+		      sprintf ( regResult, "0" );
+                    break;
+    case OPERATION : {
+	   	       char *reg1 = ( char * ) malloc ( 3 ),
+			    *reg2 = ( char * ) malloc ( 3 );
+
+                       generateAssemblyForSubexpression ( node -> point.nodes [ 0 ], flag );
+                       generateAssemblyForSubexpression ( node -> point.nodes [ 1 ], flag );
+		       switch ( node -> procno )
+		       {
+			 case MOD :
+			 case DIV : findRegister ( NULL, DX, ( char * ) malloc ( 3 ));
+			 case MUL : findRegister ( NULL, AX, reg1 );
+				    break;
+                         default : findRegister ( NULL, ANYTHING, reg1 );
+				   break;
+		       }
+                       findRegister ( NULL, ANYTHING, reg2 );
+                       fprintf ( output, "\tPOP\t%s\n", reg2 );
+                       fprintf ( output, "\tPOP\t%s\n", reg1 );
+		       switch ( node -> procno )
+		       {
+		         case ADD : fprintf ( output, "\tADD\t%s, %s\n", reg1, reg2 );
+			    	    regResult = reg1;
+			    	    cleanRegister ( regResult );
+				    break;
+		         case SUB : fprintf ( output, "\tSUB\t%s, %s\n", reg1, reg2 );
+			    	    regResult = reg1;
+				    cleanRegister ( regResult );
+				    break;
+                         case MUL : fprintf ( output, "\tIMUL\t%s\n", reg2 );
+				    regResult = ( char * ) malloc ( sizeof ( char ) * 3 );
+				    strcpy ( regResult, "AX" );
+				    cleanRegister ( "AX" );
+				    cleanRegister ( "DX" );
+				    break;
+                         case DIV : fprintf ( output, "\tCWD\n" );
+				    fprintf ( output, "\tIDIV\t%s\n", reg2 );
+				    regResult = ( char * ) malloc ( sizeof ( char ) * 3 );
+				    strcpy ( regResult, "AX" );
+				    cleanRegister ( "AX" );
+				    break;
+                         case MOD : fprintf ( output, "\tCWD\n" );
+				    fprintf ( output, "\tIDIV\t%s\n", reg2 );
+				    regResult = ( char * ) malloc ( sizeof ( char ) * 3 );
+				    strcpy ( regResult, "DX" );
+				    cleanRegister ( "AX" );
+				    break;
+		      }
+		    }
+                    break;
+    case RELATION : {
+	   	      char *reg1 = ( char * ) malloc ( 3 ),
+			   *reg2 = ( char * ) malloc ( 3 );
+
+                      generateAssemblyForSubexpression ( node -> point.nodes [ 0 ], flag );
+                      generateAssemblyForSubexpression ( node -> point.nodes [ 1 ], flag );
+                      findRegister ( NULL, ANYTHING, reg1 );
+                      findRegister ( NULL, ANYTHING, reg2 );
+                      fprintf ( output, "\tPOP\t%s\n", reg2 );
+                      fprintf ( output, "\tPOP\t%s\n", reg1 );
+		      switch ( node -> procno )
+		      {
+		        case EQUAL : fprintf ( output, "\tCMP\t%s, %s\n", reg1, reg2 );
+				     if ( flag == IFFLAG ) 
+				     {
+				       auxFlag = 1;
+				       fprintf ( output, "\tJNE\t_%i\n", label );
+                                     }
+                                     else if ( flag == WHILEFLAG )
+				     {
+				       auxFlag = 1;
+				       fprintf ( output, "\tJNE\t_%i\n", label - 1 );
+                                     }
+                                     else
+				     {
+	                               int label1 = ++label,
+				           label2 = ++label;
+                                   
+				       fprintf ( output, "\tJNE\t_%i\n", label1 );
+				       findRegister ( NULL, ANYTHING, regResult );
+				       fprintf ( output, "\tMOV\t%s, 255\n", regResult );
+				       fprintf ( output, "\tJMP\t_%i\n", label2 );
+				       fprintf ( output, "_%i :\n", label1 );
+				       fprintf ( output, "\tMOV\t%s, 0\n", regResult );
+				       fprintf ( output, "_%i :\n", label2 );
+				       cleanRegister ( regResult );
+                                     }
+				     break;
+		        case DIFERENT : fprintf ( output, "\tCMP\t%s, %s\n", reg1, reg2 );
+				        if ( flag == IFFLAG ) 
+					{
+				          auxFlag = 1;
+				          fprintf ( output, "\tJE\t_%i\n", label );
+                                        }
+                                        else if ( flag == WHILEFLAG )
+					{
+				          auxFlag = 1;
+				          fprintf ( output, "\tJE\t_%i\n", label - 1 );
+                                        }
+                                        else
+				        {
+	                                  int label1 = ++label,
+				              label2 = ++label;
+
+				          fprintf ( output, "\tJE\t_%i\n", label1 );
+				          findRegister ( NULL, ANYTHING, regResult );
+				          fprintf ( output, "\tMOV\t%s, 255\n", regResult );
+				          fprintf ( output, "\tJMP\t_%i\n", label2 );
+				          fprintf ( output, "_%i :\n", label1 );
+				          fprintf ( output, "\tMOV\t%s, 0\n", regResult );
+				          fprintf ( output, "_%i :\n", label2 );
+					  cleanRegister ( regResult );
+                                        }
+				        break;
+		        case SMALLER : fprintf ( output, "\tCMP\t%s, %s\n", reg1, reg2 );
+				       if ( flag == IFFLAG ) 
+				       {
+					 auxFlag = 1;
+				         fprintf ( output, "\tJNL\t_%i\n", label );
+                                       }
+                                       else if ( flag == WHILEFLAG )
+				       {
+					 auxFlag = 1;
+				         fprintf ( output, "\tJNL\t_%i\n", label - 1 );
+                                       }
+                                       else
+				       {
+	                                 int label1 = ++label,
+				             label2 = ++label;
+
+	  			         fprintf ( output, "\tJNL\t_%i\n", label1 );
+				         findRegister ( NULL, ANYTHING, regResult );
+				         fprintf ( output, "\tMOV\t%s, 255\n", regResult );
+				         fprintf ( output, "\tJMP\t_%i\n", label2 );
+				         fprintf ( output, "_%i :\n", label1 );
+				         fprintf ( output, "\tMOV\t%s, 0\n", regResult );
+				         fprintf ( output, "_%i :\n", label2 );
+					 cleanRegister ( regResult );
+                                       }
+				       break;
+		        case GREATER : fprintf ( output, "\tCMP\t%s, %s\n", reg1, reg2 );
+				       if ( flag == IFFLAG )
+				       {
+					 auxFlag = 1;
+				         fprintf ( output, "\tJNG\t_%i\n", label );
+                                       }
+                                       else if ( flag == WHILEFLAG )
+				       {
+					 auxFlag = 1;
+				         fprintf ( output, "\tJNG\t_%i\n", label - 1 );
+                                       }
+                                       else
+				       {
+	                                 int label1 = ++label,
+				             label2 = ++label;
+
+	  			         fprintf ( output, "\tJNG\t_%i\n", label1 );
+				         findRegister ( NULL, ANYTHING, regResult );
+				         fprintf ( output, "\tMOV\t%s, 255\n", regResult );
+				         fprintf ( output, "\tJMP\t_%i\n", label2 );
+				         fprintf ( output, "_%i :\n", label1 );
+				         fprintf ( output, "\tMOV\t%s, 0\n", regResult );
+				         fprintf ( output, "_%i :\n", label2 );
+					 cleanRegister ( regResult );
+                                       }
+				       break;
+		        case SMALLEREQUAL : fprintf ( output, "\tCMP\t%s, %s\n", reg1, reg2 );
+				            if ( flag == IFFLAG ) 
+					    {
+					      auxFlag = 1;
+				              fprintf ( output, "\tJNLE\t_%i\n", label );
+                                            }
+                                            else if ( flag == WHILEFLAG )
+					    {
+					      auxFlag = 1;
+				              fprintf ( output, "\tJNLE\t_%i\n", label - 1 );
+                                            }
+                                            else
+				            {
+	                                      int label1 = ++label,
+				                  label2 = ++label;
+
+				              fprintf ( output, "\tJNLE\t_%i\n", label1 );
+				              findRegister ( NULL, ANYTHING, regResult );
+				              fprintf ( output, "\tMOV\t%s, 255\n", regResult );
+				              fprintf ( output, "\tJMP\t_%i\n", label2 );
+				              fprintf ( output, "_%i :\n", label1 );
+				              fprintf ( output, "\tMOV\t%s, 0\n", regResult );
+				              fprintf ( output, "_%i :\n", label2 );
+					      cleanRegister ( regResult );
+                                            }
+					    break;
+		        case GREATEREQUAL : fprintf ( output, "\tCMP\t%s, %s\n", reg1, reg2 );
+				            if ( flag == IFFLAG ) 
+					    {
+					      auxFlag = 1;
+				              fprintf ( output, "\tJNGE\t_%i\n", label );
+                                            }
+                                            else if ( flag == WHILEFLAG )
+					    {
+					      auxFlag = 1;
+				              fprintf ( output, "\tJNGE\t_%i\n", label - 1 );
+                                            }
+                                            else
+			    	            {
+	                                      int label1 = ++label,
+				                  label2 = ++label;
+
+				              fprintf ( output, "\tJNGE\t_%i\n", label1 );
+				              findRegister ( NULL, ANYTHING, regResult );
+				              fprintf ( output, "\tMOV\t%s, 255\n", regResult );
+				              fprintf ( output, "\tJMP\t_%i\n", label2 );
+				              fprintf ( output, "_%i :\n", label1 );
+				              fprintf ( output, "\tMOV\t%s, 0\n", regResult );
+				              fprintf ( output, "_%i :\n", label2 );
+					      cleanRegister ( regResult );
+                                            }
+					    break;
+                        case AND : fprintf ( output, "\tAND\t%s, %s\n", reg1, reg2 );
+			           regResult = reg1;
+			           break;
+		        case OR : fprintf ( output, "\tOR\t%s, %s\n", reg1, reg2 );
+			          regResult = reg1;
+			          break;
+		        case NOT : fprintf ( output, "\tNOT\t%s\n", reg1 );
+			           regResult = reg1;
+			           break;
+		      }
+
+	            }
+  }
+  if ( !auxFlag ) 
+    fprintf ( output, "\tPUSH\t%s\n", regResult );
+  if (( node -> name != VARNAME ) && ( node -> name != FIELDS ) && ( !auxFlag ) && ( node -> name != INTEGERNODE ) && ( node -> name != CHARNODE ) && ( node -> name != BOOLNODE ))
+    cleanRegister ( regResult );
+}

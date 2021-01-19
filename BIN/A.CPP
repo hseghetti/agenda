@@ -1,0 +1,27 @@
+#include<conio.h>
+#include<iostream.h>
+#include<dos.h>
+void main()
+{
+int i;
+clrscr();
+    textattr(6+(8<<4));
+    for(i=0;i<10;i++)
+    {
+    gotoxy(15,20);cout<<" A ";
+    gotoxy(18,21);cout<<" G ";
+    gotoxy(21,20);cout<<" E ";
+    gotoxy(24,21);cout<<" N ";
+    gotoxy(27,20);cout<<" D ";
+    gotoxy(30,21);cout<<" A ";
+    delay(700);clrscr();
+    gotoxy(15,21);cout<<" A ";
+    gotoxy(18,20);cout<<" G ";
+    gotoxy(21,21);cout<<" E ";
+    gotoxy(24,20);cout<<" N ";
+    gotoxy(27,21);cout<<" D ";
+    gotoxy(30,20);cout<<" A ";
+    delay(700);clrscr();
+    }
+getch();
+}

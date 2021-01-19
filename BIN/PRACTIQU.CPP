@@ -1,0 +1,56 @@
+#include <iostream.h>
+#include <conio.h>
+
+
+int menos_venta(int x[50]);
+float venta_promedio (int x[50]);
+
+void main()
+{
+int v[50],a;
+float b;
+
+for(int i=0;i<50;i++)
+{
+gotoxy(15,5);cout<<"ingrese la cantidad de voletos vendidos";
+gotoxy(20,7);
+cin>>v[i];
+clrscr();
+}
+a=menos_venta(v);
+b=venta_promedio(v);
+
+cout<<"nø de colectivo que menos voletos vendio"<<endl;cout<<a<<endl;
+cout<<"promedio de ventas"<<endl;cout<<b;
+getch();
+clrscr();
+}
+
+
+int menos_venta(int x[50])
+{
+int menor,p=-1;
+menor=x[0];
+for(int i=0;i<50;i++)
+{
+if (x[i]<menor)
+{
+menor=x[i];
+p=i;
+}
+}
+return p;
+}
+
+float venta_promedio(int x[50])
+{
+int suma=0;float pro;
+for (int i=0; i<50;i++)
+{
+suma=suma + x[i];
+}
+pro=(float) suma/50;
+
+return pro;
+}
+

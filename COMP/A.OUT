@@ -1,0 +1,67 @@
+activations	SEGMENT STACK 'STACK'
+	DB	1024	DUP(?)
+TOP	LABEL	WORD
+activations	ENDS
+
+data	SEGMENT word public 'data'
+access	DW	1	DUP(?)
+data	ENDS
+
+code	SEGMENT word public 'code'
+	ASSUME	CS:code,DS:data,SS:activations
+
+START:	MOV	AX,activations
+	MOV	SS,AX
+	MOV	AX,access
+	MOV	DS,AX
+	LEA	SP,TOP
+	CALL	main
+
+
+MOVE	PROC	NEAR
+MOVING:
+	MOV	AL,[SI]
+	MOV	[DI],AL
+	INC	SI
+	INC	DI
+	LOOP	MOVING
+	ENDP	MOVE
+
+main	PROC	NEAR
+	PUSH	BP
+	MOV	BX,access[0]
+	PUSH	BX
+	MOV	BP,SP
+	MOV	access[0],BP
+	SUB	SP,2
+	PUSH	3
+	POP	CX
+	MOV	[BP-2], CX
+	MOV	DX, [BP-2]
+	PUSH	0
+	PUSH	DX
+	CALL	FAR _writeInteger
+	POP	DX
+	POP	DX
+	POP	AX
+	MOV	SP,BP
+	POP	DX
+	MOV	access[0],DX
+	POP	BP
+	MOV	AH,4Ch
+	INT	21h
+	RET
+	ENDP	main
+
+code	ENDS
+
+	extrn	_writeInteger:far
+	extrn	_writeBoolean:near
+	extrn	_writeChar:near
+	extrn	_writeString:near
+	extrn	_writeNewline:near
+	extrn	_readChar:near
+	extrn	_readBoolean:near
+	extrn	_readInteger:near
+	END	START
+

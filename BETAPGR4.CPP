@@ -1,0 +1,164 @@
+#include <iostream.h>
+#include <conio.h>
+#include <dos.h>
+#include <string.h>
+#include <stdio.h>
+#include <process.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include "c:\bc\bin\agenda.h"
+
+struct cumple
+{
+int marc;
+char nom[20];
+};
+struct comp
+{
+int date;
+cumple ca;
+char notas[80];
+};
+
+
+struct calen
+{
+comp  mes[38];
+char nommes[15];
+char anio[38];
+};
+
+
+void calendario ();
+void visualcalen (calen r,char &w);
+void escribir(FILE *m);
+
+void main()
+{
+clrscr();
+char m,us[20],pas[20],pas2[20];FILE *f;int i=0;
+int M;
+do
+{
+cout<<"Ingrese Opci¢n de Usuario/n";
+cout<<" 1 Crear Nuevo Usuario/n";
+cout<<" 2 Usuario existente/n";
+cout<<" 3 Salir del programa/n";
+cin>>M;
+}
+while (M<1 || M>3);
+
+while (M!=9)
+{
+switch(M)
+  {
+  case 1://Crear nuevo usuario
+           strcpy (us,newus());
+           cerear(us);
+           break;
+  case 2://Usuario existente
+            cout<<"Ingrese el nombre de Usuario";
+           gets(us);
+           f=fopen(us,"rb");
+           if(f==NULL) {cout<<"Usuario Inexistente";getch();exit(1);}
+           else
+           {
+           cout<<"ingrese pasword";
+           gets(pas);
+           fseek(f,540*sizeof(agenda),SEEK_SET);
+           fread(&pas2,sizeof(pas2),1,f);
+           if(strcmp(pas,pas2)!=0)
+           {
+           for(i=0;i<2;i++)
+             {
+             cout<<"ingrese pasword";
+             gets(pas);
+             if(strcmp(pas,pas2)==0)
+             break;
+             }
+           if(i==2)exit(1);
+           }
+           }
+           break;
+
+  case 3://Salir del programa
+           exit(1);
+           break;
+  }
+do
+{
+  clrscr();
+  cout<<"ingresar opcion";
+  cout<<" 1 ingresar registro/n";
+  cout<<" 2 buscar registro/n";
+  cout<<" 3 eliminar registro/n";
+  cout<<" 4 ingresar al calendario";
+  cout<<" Sale con 'x' ";
+  cin>>m;
+  switch(m)
+    {
+    case '1'://Nuevo registro
+             newreg(us);
+             break;
+    case '2'://Buscar registro
+             buscar (us);
+             break;
+    case '3'://Elimina Registro en forma logica
+	         eliminar(us);
+             break;
+    case '4'://calendario
+             calendario ();
+             break;
+    }
+}
+while (m!='x');
+clrscr();
+
+
+do
+{
+cout<<"Ingrese Opci¢n de Usuario/n";
+cout<<" 1 Crear Nuevo Usuario/n";
+cout<<" 2 Usuario existente/n";
+cout<<" 3 Salir del programa/n";
+cin>>M;
+}
+while (M<1 || M>3);
+
+}
+
+}
+
+
+
+void calendario ()
+{
+cout<<"la gran concha de tu madre PC";getch();
+}
+
+
+void escribir(FILE *m)
+{
+calen r;
+int f;
+long pos;
+cout<<"Ingrese fecha de anotacion";
+cin>>f;
+pos=(ftell(m)-sizeof(r));
+fseek (m,pos*sizeof(r),SEEK_SET);
+fread (&r,sizeof(r),1,m);
+for (int i=0;i<38 && r.mes[i].date!=f;i++);
+if (i==38)
+{clrscr();gotoxy(1,1);cout<<"ingreso mal la fecha";}
+else
+  {
+  char car='z';
+  cout<<"Empeza a escribir";
+  for (int j=0;j<80 && (r.mes[i].notas[j]!='*' || car!='*');i++)
+    {
+    car=r.mes[i].notas[j];
+    r.mes[i].notas[j]=getche();
+    }
+  }
+
+}

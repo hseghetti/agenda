@@ -1,0 +1,23 @@
+Mira cuando quieres usar modalidades en graficos, lo primerito que tienes que hacer es decirle a la compu que vas a usar los graficos y como le dices eso? con la funcion initgraph.
+La funcion lleba 3 parametros que son, el driver maestro, el modo en que usaras ese driver y la ruta (o carpeta) donde se encuentra ese driver. Del driver maestro hay varios tipos, pero para mas facilidad mejor pon que el driver maestro se detecte solo y para su modo de inicio lo dejas en blanco, y su ruta si la especificas, que por lo general, como el directorio de trabajo es el BIN solo tienes que poner "..\\BGI" y listo. mira
+
+int gd = DETECT, gm; //el driver maestro igual a detect
+initgraph(&gd, &gm, "..\\BGI");
+
+como las variables de la funcion son por referencia por eso les ponemos el &.
+con eso inicias graficos. pero si quieres un codigo con mas crema.. aki esta este:
+
+void ini_graficos()
+{
+int gd = DETECT, gm, e rrorcode;
+initgraph( &gd , &gm , "C:\\BORLANDC\\BGI");
+
+errorcode = graphresult();
+if (errorcode != grOk) /*Con error ocurrido*/
+{
+printf("Error en graficos: %s\n", grapherrormsg(errorcode));
+printf("Presione cualquier tecla para salir:");
+getch();
+exit(1); /* terminacion con error de codigo */
+}
+}

@@ -1,0 +1,15 @@
+#ifndef _LIB_H
+#define _LIB_H
+
+#include <stdio.h>
+
+void writeInteger ( int, int );
+void writeBoolean ( char, int );
+void writeChar ( char, int );
+void writeString ( char *, int );
+void writeNewline ( void );
+char readChar ();
+char readBoolean ();
+char readInteger ();
+
+#endif

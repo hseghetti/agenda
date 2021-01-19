@@ -1,0 +1,65 @@
+#include <iostream.h>
+#include <conio.h>
+#include <ctype.h>
+
+int ispar(int a);
+void  main()
+{
+
+int N,pro;
+int con,a,b,c,d,men,flag4,flag8,flag2,flag54,flag12,flag45;
+con=a=b=c=d=men=flag4=flag8=flag2=flag54=flag12=flag45=0,pro=0;
+
+do
+{
+N=getche();
+
+if(isdigit(N))
+{
+con++;
+
+if(N=='5' && pro=='7' && con=='2') a++;
+
+cout<<a<<pro;
+if(N=='4') flag4=1;
+if(N=='8') flag8=1;
+if(N=='2') flag2=1;
+if(flag4=='1' && flag8=='1' && flag2=='1') b++;
+
+
+if(ispar(N)=='1') c++;
+
+
+if(pro=='5'&&N=='4') flag54=1;
+if(pro=='1'&&N=='2') flag12=1;
+if(pro=='4'&&N=='5') flag45=1;
+if(con>5&&flag54=='1'&&flag12=='1'&&flag45=='1') d++;
+pro=N;
+}
+else
+{
+if(con<men) men=con;
+
+con=0;
+pro=flag4=flag8=flag2=flag54=flag12=flag45=0;
+}
+}
+while (N!='#');
+
+cout<<"punto a";cout<<a;
+cout<<"punto b";cout<<b;
+cout<<"punto c";cout<<c;
+cout<<"punto d";cout<<d;
+cout<<"secuencia mas corta";cout<<men;
+getch();
+clrscr();
+}
+
+
+int ispar(int a)
+{
+if(a%2=='0')
+return 1;
+else
+return 0;
+}

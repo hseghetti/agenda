@@ -1,0 +1,286 @@
+#include <iostream.h>
+#include <conio.h>
+#include <dos.h>
+#include <string.h>
+#include <stdio.h>
+#include <process.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+struct agenda
+{
+char ape[20],nom[20];
+char dir[30],tel[11];
+char mail[20];int flag;
+int prox;
+};
+
+void cerear (char us[20]);
+char *newus ();
+void newreg (char us[20]);
+int dispersion (char ape[20]);
+int dispersionII ();
+void buscar (char us[20]);
+void modificar (char us[20],int pos,agenda r);
+void eliminar (char us[20]);
+void eliminartotales(char us[20]);
+
+char *newus ()
+{
+char f[20],pas[20],pas2[20];
+gotoxy(1,1);cout<<"Ingrese el nombre de nuevo Usuario ";
+gets(f);
+FILE *m=fopen(f,"wb");
+if (m==NULL) {gotoxy(15,7);cout<<"error al abrir el archivo";exit (1);}
+else
+{
+fseek(m,540*sizeof(agenda),SEEK_SET);
+do
+{
+cout<<"ingrese pasword ";
+gets(pas);
+cout<<"Confirme pasword ";
+gets(pas2);
+if(strcmp(pas,pas2)!=0)cout<<"No coinciden los pasword";
+}
+while(strcmp(pas,pas2)!=0);
+fwrite(&pas,sizeof(pas),1,m);
+fclose(m);
+}
+return (f);
+}
+
+
+void cerear (char us[20])
+{
+FILE *m=fopen (us,"r+b");
+if (m==NULL){cout<<"error";exit(1);}
+else
+  {
+  agenda r;
+  for (int i=0;i<540;i++)
+    {
+    strcpy(r.ape,"vacio");
+    r.flag=0;
+    r.prox=-1;
+    fwrite (&r,sizeof(r),1,m);
+    }
+  fclose(m);
+  }
+}
+
+
+void newreg (char us[20])
+{
+FILE *m=fopen (us,"r+b");
+if (m==NULL) {gotoxy(1,1);cout<<"error al abrir el archivo";exit (1);}
+else
+  {
+  agenda r,s,t;
+  int pos,aux;
+  cout<<"Ingrese Apellido";
+  gets(t.ape);
+  cout<<"Ingrese Nombre";
+  gets(t.nom);
+  cout<<"Ingrese Direccion";
+  gets(t.dir);
+  cout<<"Ingrese Telefono";
+  gets(t.tel);
+  cout<<"Ingrese e-mail";
+  gets(t.mail);
+  t.prox=-1;t.flag=0;
+  pos=dispersion (t.ape);
+  fseek (m,pos*sizeof(r),SEEK_SET);
+  fread (&r,sizeof(r),1,m);
+  if (strcmp(r.ape,"vacio")==0)//si esta vacio
+    {
+    fseek (m,pos*sizeof(t),SEEK_SET);
+    fwrite (&t,sizeof(t),1,m);
+    }
+  else
+    {
+    aux=pos;
+    while (r.prox!=-1)
+      {
+      aux=r.prox;
+      fseek (m,r.prox*sizeof(r),SEEK_SET);
+      fread (&r,sizeof(r),1,m);
+      }
+    pos=dispersionII();
+    fseek (m,pos*sizeof(s),SEEK_SET);
+    fread (&s,sizeof(s),1,m);
+    while (strcmp(s.ape,"vacio")!=0)
+      {
+      pos=dispersionII();
+      fseek (m,pos*sizeof(s),SEEK_SET);
+      fread (&s,sizeof(s),1,m);
+      }
+    cout<<pos;getch();
+    fseek (m,pos*sizeof(s),SEEK_SET);
+    fwrite (&t,sizeof(t),1,m);
+    r.prox=pos;
+    fseek (m,aux*sizeof(r),SEEK_SET);
+    fwrite (&r,sizeof(r),1,m);
+    }
+    fclose(m);
+  }
+}
+
+
+
+int dispersion (char ape[20])
+{
+int can,dis=0;
+can=strlen(ape);
+for (int i=0; i<=can;i++) dis+=(ape[i]%103);
+dis=dis%103;
+return (dis);
+}
+
+
+int dispersionII ()
+{
+int r;
+randomize();
+r=(rand()%540);
+while (r<103 || r>540) r=(rand()%540);
+return (r);
+}
+
+
+void buscar(char us[20])
+{
+FILE *f=fopen(us,"r+b");
+if (f==NULL){gotoxy(1,1);cout<<"error al abrir el archivo";getch();exit(1); }
+else
+  {
+  agenda r;char ape[20],nom[20];int pos,posII;
+  gotoxy(15,15);cout<<"Ingrese Apellido a Buscar";
+  gotoxy(18,16);gets(ape);
+  gotoxy(15,17);cout<<"Ingrese Nombre a Buscar";
+  gotoxy(18,18);gets(nom);
+  pos=dispersion(ape);
+  fseek(f,pos*sizeof(r),SEEK_SET);
+  fread(&r,sizeof(r),1,f);
+  posII=pos;
+  cout<<r.ape<<" "<<r.prox;getch();
+  while(strcmp(ape,r.ape)!=0 && strcmp(nom,r.nom)!=0 && r.prox!=-1)
+    {
+    posII=r.prox;
+    fseek(f,r.prox*sizeof(r),SEEK_SET);
+    fread(&r,sizeof(r),1,f);
+    }
+   if(strcmp(ape,r.ape)==0)
+   {
+     clrscr();
+     gotoxy(5,5);cout<<r.ape;
+     gotoxy(5,6);cout<<r.nom;
+     gotoxy(5,7);cout<<r.dir;
+     gotoxy(5,8);cout<<r.tel;
+     gotoxy(5,9);cout<<r.mail;
+     gotoxy(5,10);cout<<r.prox;
+     fclose(f);
+     modificar (us,posII,r);
+    }
+   else cout<<"No se encontro registro con ese apellido";
+  fclose(f);
+  }
+}
+
+
+void modificar(char us[20],int pos,agenda r)
+{
+  FILE *f=fopen(us,"r+b");
+  if (f==NULL) {gotoxy(1,1);cout<<"error al abrir el archivo";getch();exit(1);}
+  else
+  {
+  char x;
+  cout<<"para Modificar Datos presionar M ";
+  x=getche();
+  x=toupper(x);
+  if(x=='M')
+   {
+   cout<<"Ingrese Nombre";
+   gets(r.nom);
+   cout<<"Ingrese Direccion";
+   gets(r.dir);
+   cout<<"Ingrese Telefono";
+   gets(r.tel);
+   cout<<"Ingrese e-mail";
+   gets(r.mail);
+   fseek(f,pos*sizeof(r),SEEK_SET);
+   fwrite(&r,sizeof(r),1,f);
+   }
+   fclose(f);
+   }
+}
+
+
+void eliminar (char us[20])
+{
+FILE *m=fopen (us,"r+b");
+if (m==NULL) {gotoxy(1,1);cout<<"error al abrir el archivo";getch();}
+else
+  {
+  char ape[20];
+  agenda r,a;int pos,aux;
+  cout<<"ingrear el apellido a borrar";
+  gets(ape);
+  pos=dispersion(ape);
+  //
+  cout<<" "<<pos;
+  //
+  fseek(m,pos*sizeof(r),SEEK_SET);
+  fread(&r,sizeof(r),1,m);
+  while(strcmp(ape,r.ape)!=0 && r.prox!=-1)
+    {
+    aux=pos;
+    pos=r.prox;
+    fseek(m,pos*sizeof(r),SEEK_SET);
+    fread(&r,sizeof(r),1,m);
+    }
+  if(strcmp(ape,r.ape)==0)
+    {
+      char c;
+      cout<<"¨Confirma la eliminacion del registro s/n?";
+      c=getche();
+      c=toupper(c);
+      if (c=='S')
+	if (pos<103)//Es cabecera
+	  if (r.prox==-1)
+	    {
+	    r.flag=1;
+	    fseek(m,pos*sizeof(r),SEEK_SET);
+	    fwrite(&r,sizeof(r),1,m);
+	    }
+	  else
+	    {
+	    fseek(m,r.prox*sizeof(r),SEEK_SET);
+	    fread(&a,sizeof(a),1,m);
+	    r=a;
+	    a.flag=1;strcpy(a.ape,"vacio");a.prox=-1;
+	    fseek(m,a.prox*sizeof(r),SEEK_SET);
+	    fwrite(&a,sizeof(a),1,m);
+	    fseek(m,pos*sizeof(r),SEEK_SET);
+	    fwrite(&r,sizeof(r),1,m);
+	    fseek(m,pos*sizeof(r),SEEK_SET);
+	    fread(&r,sizeof(r),1,m);
+	    }
+	else
+	  {
+	  fseek(m,pos*sizeof(r),SEEK_SET);
+	  fread(&r,sizeof(r),1,m);
+	  r.flag=1;
+	  pos=r.prox;
+	  fwrite(&r,sizeof(r),1,m);
+	  fseek(m,aux*sizeof(r),SEEK_SET);
+	  fread(&r,sizeof(r),1,m);
+	  r.prox=pos;
+	  fseek(m,aux*sizeof(r),SEEK_SET);
+	  fwrite(&r,sizeof(r),1,m);
+	  }
+    }
+  else cout<<"El apellido ingresado no existe";getch();
+  fclose(m);
+  }
+}

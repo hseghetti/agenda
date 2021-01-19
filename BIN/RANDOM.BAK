@@ -1,0 +1,18 @@
+#include <iostream.h>
+#include <conio.h>
+#include <stdlib.h>
+
+void main ()
+{
+clrscr();
+int r;
+r=(rand()%540);
+while (r<103 || r>540)
+{
+r=(rand()%540);
+cout<<r<<" ";
+getch();
+}
+cout<<r<<" ";
+getch();
+}

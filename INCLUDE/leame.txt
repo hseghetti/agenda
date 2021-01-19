@@ -1,0 +1,11 @@
+Mouse
+Autor: Jorge López Muñoz
+Rutinas de manejo del ratón.
+
+---------------------------------------------------
+
+Este fichero ha sido descargado desde:
+http://www.elrincondelc.com
+
+El Rincón del C - Cusos de programación, código fuente, información
+sobre compiladores, listas de correo para consultas,...
